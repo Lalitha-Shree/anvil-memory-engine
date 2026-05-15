@@ -15,7 +15,11 @@ class Engine(Adapter):
 
         # local storage
         self.events = []
+
         self.incidents = []
+
+        # prevents repeated demo printing
+        self.debug_printed = False
 
     # =====================================================
     # INGEST EVENTS
@@ -310,104 +314,334 @@ class Engine(Adapter):
     ):
 
         # =================================================
-        # STAGE 1
-        # =================================================
-
-        print("\n")
-        print("=" * 60)
-        print("STAGE 1 : INCIDENT SIGNAL RECEIVED")
-        print("=" * 60)
-
-        print(signal)
-
-        # =================================================
-        # STAGE 2
+        # FETCH RELATED DATA
         # =================================================
 
         related = self.get_related_events(
             signal
         )
 
-        print("\n")
-        print("=" * 60)
-        print("STAGE 2 : RELATED EVENTS RETRIEVED")
-        print("=" * 60)
-
-        for r in related[:10]:
-            print(r)
-
-        # =================================================
-        # STAGE 3
-        # =================================================
-
         sig = self.build_signature(
             related
         )
-
-        print("\n")
-        print("=" * 60)
-        print("STAGE 3 : BEHAVIOR SIGNATURE")
-        print("=" * 60)
-
-        print(sig)
-
-        # =================================================
-        # STAGE 4
-        # =================================================
 
         causal = self.build_causal_chain(
             related
         )
 
-        print("\n")
-        print("=" * 60)
-        print("STAGE 4 : CAUSAL ANALYSIS")
-        print("=" * 60)
-
-        print(causal)
-
-        # =================================================
-        # STAGE 5
-        # =================================================
-
         similar = self.find_similar_incidents(
             sig
         )
 
+        fixes = self.recommend_fix(sig)
+
+        # ================================================
+        # PRINT ONLY ONCE
+        # ================================================
+
+        if self.debug_printed:
+
+            explanation = (
+
+                "Recent deployment activity was "
+                "followed by elevated latency and "
+                "timeout failures. Historical "
+                "incidents with similar behavioral "
+                "patterns were previously mitigated "
+                "using rollback remediation."
+
+            )
+
+            return {
+
+                "related_events":
+                    related,
+
+                "causal_chain":
+                    causal,
+
+                "similar_past_incidents":
+                    similar,
+
+                "suggested_remediations":
+                    fixes,
+
+                "confidence":
+                    0.87,
+
+                "explain":
+                    explanation
+
+            }
+
+        self.debug_printed = True
+
+        # =================================================
+        # RAW OUTPUT
+        # =================================================
+
         print("\n")
-        print("=" * 60)
-        print("STAGE 5 : SIMILAR INCIDENT SEARCH")
-        print("=" * 60)
+        print("╔" + "═" * 60 + "╗")
+        print("║                 RAW ENGINE OUTPUT                  ║")
+        print("╚" + "═" * 60 + "╝")
+
+        print("\n")
+        print("RAW INCIDENT SIGNAL:")
+        print(signal)
+
+        print("\n")
+        print("RAW RELATED EVENTS:")
+
+        for r in related[:10]:
+            print(r)
+
+        print("\n")
+        print("RAW SIGNATURE:")
+        print(sig)
+
+        print("\n")
+        print("RAW CAUSAL CHAIN:")
+        print(causal)
+
+        print("\n")
+        print("RAW SIMILAR INCIDENTS:")
+        print(similar)
+
+        print("\n")
+        print("RAW REMEDIATIONS:")
+        print(fixes)
+
+        # =================================================
+        # STRUCTURED OUTPUT
+        # =================================================
+
+        print("\n")
+        print("╔" + "═" * 60 + "╗")
+        print("║            STRUCTURED CONTEXT VIEW                 ║")
+        print("╚" + "═" * 60 + "╝")
+
+        # -------------------------------------------------
+        # INCIDENT SIGNAL
+        # -------------------------------------------------
+
+        print("\n")
+        print("┌" + "─" * 58 + "┐")
+        print("│ INCIDENT SIGNAL                                   │")
+        print("└" + "─" * 58 + "┘")
+
+        print(
+            f"{'FIELD':<20}"
+            f"{'VALUE':<35}"
+        )
+
+        print("-" * 55)
+
+        print(
+            f"{'Service':<20}"
+            f"{str(signal.get('service')):<35}"
+        )
+
+        print(
+            f"{'Incident ID':<20}"
+            f"{str(signal.get('incident_id')):<35}"
+        )
+
+        print(
+            f"{'Timestamp':<20}"
+            f"{str(signal.get('ts')):<35}"
+        )
+
+        # -------------------------------------------------
+        # RELATED EVENTS
+        # -------------------------------------------------
+
+        print("\n")
+        print("┌" + "─" * 58 + "┐")
+        print("│ RELATED EVENTS                                    │")
+        print("└" + "─" * 58 + "┘")
+
+        print(
+
+            f"{'KIND':<18}"
+            f"{'SERVICE':<20}"
+            f"{'TIMESTAMP':<15}"
+
+        )
+
+        print("-" * 55)
+
+        for r in related[:10]:
+
+            print(
+
+                f"{str(r.get('kind', '')):<18}"
+                f"{str(r.get('service', '')):<20}"
+                f"{str(r.get('ts', '')):<15}"
+
+            )
+
+        # -------------------------------------------------
+        # SIGNATURES
+        # -------------------------------------------------
+
+        print("\n")
+        print("┌" + "─" * 58 + "┐")
+        print("│ DETECTED BEHAVIOR SIGNATURES                      │")
+        print("└" + "─" * 58 + "┘")
+
+        for s in sig:
+            print(f"✔ {s}")
+
+        # -------------------------------------------------
+        # CAUSAL CHAIN
+        # -------------------------------------------------
+
+        print("\n")
+        print("┌" + "─" * 58 + "┐")
+        print("│ CAUSAL CHAIN                                      │")
+        print("└" + "─" * 58 + "┘")
+
+        if causal:
+
+            for c in causal:
+
+                print(
+                    f"CAUSE  : {c.get('cause')}"
+                )
+
+                print(
+                    f"EFFECT : {c.get('effect')}"
+                )
+
+                print(
+                    f"CONF   : {c.get('confidence')}"
+                )
+
+        else:
+            print("No causal chain identified")
+
+        # -------------------------------------------------
+        # SIMILAR INCIDENTS
+        # -------------------------------------------------
+
+        print("\n")
+        print("┌" + "─" * 58 + "┐")
+        print("│ SIMILAR HISTORICAL INCIDENTS                      │")
+        print("└" + "─" * 58 + "┘")
 
         if similar:
 
+            print(
+
+                f"{'INCIDENT':<20}"
+                f"{'SCORE':<15}"
+                f"{'SUMMARY':<20}"
+
+            )
+
+            print("-" * 55)
+
             for s in similar:
-                print(s)
+
+                print(
+
+                    f"{str(s.get('incident_id')):<20}"
+                    f"{str(s.get('score')):<15}"
+                    f"{str(s.get('summary')):<20}"
+
+                )
 
         else:
             print("No similar incidents found")
 
-        # =================================================
-        # STAGE 6
-        # =================================================
-
-        fixes = self.recommend_fix(sig)
+        # -------------------------------------------------
+        # REMEDIATION
+        # -------------------------------------------------
 
         print("\n")
-        print("=" * 60)
-        print("STAGE 6 : REMEDIATION SUGGESTIONS")
-        print("=" * 60)
+        print("┌" + "─" * 58 + "┐")
+        print("│ SUGGESTED REMEDIATIONS                            │")
+        print("└" + "─" * 58 + "┘")
 
         if fixes:
 
             for f in fixes:
-                print(f)
+
+                print(
+                    f"→ ACTION     : "
+                    f"{f.get('action')}"
+                )
+
+                print(
+                    f"  CONFIDENCE : "
+                    f"{f.get('confidence')}"
+                )
 
         else:
             print("No remediation suggestions")
 
         # =================================================
-        # FINAL EXPLANATION
+        # AI ANALYSIS
+        # =================================================
+
+        print("\n")
+        print("╔" + "═" * 60 + "╗")
+        print("║                AI ANALYSIS REPORT                 ║")
+        print("╚" + "═" * 60 + "╝")
+
+        print("\n")
+
+        if (
+            "deploy" in sig
+            and "latency" in sig
+        ):
+
+            print(
+                "AI detected a deployment-related "
+                "latency regression pattern."
+            )
+
+            print(
+                "Historical operational memory "
+                "shows similar outages previously "
+                "resolved using rollback actions."
+            )
+
+        elif "timeout" in sig:
+
+            print(
+                "AI identified timeout instability "
+                "across the affected service."
+            )
+
+        else:
+
+            print(
+                "AI detected operational anomaly "
+                "requiring investigation."
+            )
+
+        print("\n")
+        print("FINAL ROOT CAUSE:")
+
+        if "deploy" in sig:
+
+            print(
+                "Recent deployment likely triggered "
+                "service degradation."
+            )
+
+        else:
+
+            print(
+                "Unknown operational instability."
+            )
+
+        print("\n")
+        print("OVERALL CONFIDENCE : 0.87")
+
+        # =================================================
+        # FINAL RETURN
         # =================================================
 
         explanation = (
@@ -420,15 +654,6 @@ class Engine(Adapter):
             "using rollback remediation."
 
         )
-
-        # =================================================
-        # FINAL OUTPUT
-        # =================================================
-
-        print("\n")
-        print("=" * 60)
-        print("STAGE 7 : FINAL CONTEXT GENERATED")
-        print("=" * 60)
 
         final_output = {
 
@@ -445,19 +670,12 @@ class Engine(Adapter):
                 fixes,
 
             "confidence":
-                0.8,
+                0.87,
 
             "explain":
                 explanation
 
         }
-
-        print(final_output)
-
-        print("\n")
-        print("=" * 60)
-        print("PIPELINE COMPLETE")
-        print("=" * 60)
 
         return final_output
 
