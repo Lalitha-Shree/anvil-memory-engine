@@ -3,7 +3,7 @@ from custom.custom_events import custom_events
 
 
 print("\n")
-print("🚀 STARTING ADVANCED CHAOS DEMO")
+print(" STARTING ADVANCED CHAOS DEMO")
 print("=" * 70)
 
 # =====================================================
@@ -17,7 +17,7 @@ engine = Engine()
 # =====================================================
 
 print("\n")
-print("📥 INGESTING CUSTOM TELEMETRY EVENTS")
+print("INGESTING CUSTOM TELEMETRY EVENTS")
 print("=" * 70)
 
 engine.ingest(custom_events)
@@ -42,7 +42,7 @@ for e in custom_events:
 # =====================================================
 
 print("\n")
-print("🧠 RUNNING AI OPERATIONAL ANALYSIS")
+print("RUNNING AI OPERATIONAL ANALYSIS")
 print("=" * 70)
 
 result = engine.reconstruct_context(signal)
@@ -53,11 +53,11 @@ result = engine.reconstruct_context(signal)
 
 print("\n")
 print("=" * 70)
-print("✅ FINAL AI CONTEXT OUTPUT")
+print("FINAL AI CONTEXT OUTPUT")
 print("=" * 70)
 
 print(result)
 
 print("\n")
-print("🎯 DEMO COMPLETE")
+print("DEMO COMPLETE")
 print("=" * 70)

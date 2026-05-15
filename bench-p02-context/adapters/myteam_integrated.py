@@ -4,6 +4,9 @@ from adapters.memory_engine import EventStore
 
 class Engine(Adapter):
 
+    # prevents repeated benchmark printing
+    already_printed = False
+
     # =====================================================
     # INIT
     # =====================================================
@@ -17,9 +20,6 @@ class Engine(Adapter):
         self.events = []
 
         self.incidents = []
-
-        # prevents repeated demo printing
-        self.debug_printed = False
 
     # =====================================================
     # INGEST EVENTS
@@ -339,7 +339,7 @@ class Engine(Adapter):
         # PRINT ONLY ONCE
         # ================================================
 
-        if self.debug_printed:
+        if Engine.already_printed:
 
             explanation = (
 
@@ -374,7 +374,7 @@ class Engine(Adapter):
 
             }
 
-        self.debug_printed = True
+        Engine.already_printed = True
 
         # =================================================
         # RAW OUTPUT
