@@ -1,10 +1,12 @@
+# Full `myteam_integrated.py` Replacement
+
+
 from adapter import Adapter
 from adapters.memory_engine import EventStore
 
 
 class Engine(Adapter):
 
-    # prevents repeated benchmark printing
     already_printed = False
 
     # =====================================================
@@ -13,10 +15,8 @@ class Engine(Adapter):
 
     def __init__(self):
 
-        # operational memory layer
         self.store = EventStore()
 
-        # local storage
         self.events = []
 
         self.incidents = []
@@ -27,17 +27,14 @@ class Engine(Adapter):
 
     def ingest(self, events):
 
-        # add into memory engine
         self.store.add_events(events)
 
-        # local copy
         self.events.extend(events)
 
         for e in events:
 
             kind = e.get("kind", "")
 
-            # collect incident-like events
             if kind in [
                 "incident_signal",
                 "alert",
@@ -59,7 +56,6 @@ class Engine(Adapter):
             ""
         )
 
-        # incident window retrieval
         if incident_id:
 
             related = self.store.get_incident_window(
@@ -69,7 +65,6 @@ class Engine(Adapter):
             if related:
                 return related
 
-        # fallback retrieval
         related = self.store.get_events_by_service(
             service
         )
@@ -77,7 +72,6 @@ class Engine(Adapter):
         if related:
             return related
 
-        # emergency fallback
         return self.events[:20]
 
     # =====================================================
@@ -92,11 +86,9 @@ class Engine(Adapter):
 
             kind = e.get("kind", "")
 
-            # deployment
             if kind == "deploy":
                 sig.append("deploy")
 
-            # metrics
             elif kind == "metric":
 
                 metric = str(
@@ -112,7 +104,6 @@ class Engine(Adapter):
                 if "memory" in metric:
                     sig.append("memory")
 
-            # logs
             elif kind == "log":
 
                 msg = str(
@@ -128,11 +119,9 @@ class Engine(Adapter):
                 if "fail" in msg:
                     sig.append("failure")
 
-            # traces
             elif kind == "trace":
                 sig.append("trace")
 
-            # remediation
             elif kind == "remediation":
 
                 action = str(
@@ -163,14 +152,40 @@ class Engine(Adapter):
             len(set2)
         )
 
-        # reward deploy-latency pattern
+        # ============================================
+        # STRONG DEPLOY-LATENCY MATCH
+        # ============================================
+
         if (
             "deploy" in set1
             and "deploy" in set2
             and "latency" in set1
             and "latency" in set2
         ):
-            score += 0.2
+
+            score += 0.25
+
+        # ============================================
+        # TIMEOUT MATCH
+        # ============================================
+
+        if (
+            "timeout" in set1
+            and "timeout" in set2
+        ):
+
+            score += 0.15
+
+        # ============================================
+        # CPU MATCH
+        # ============================================
+
+        if (
+            "cpu" in set1
+            and "cpu" in set2
+        ):
+
+            score += 0.15
 
         return min(score, 1.0)
 
@@ -195,14 +210,18 @@ class Engine(Adapter):
                 past_sig
             )
 
-            if score > 0:
+            # ============================================
+            # DECOY FILTER
+            # ============================================
+
+            if score >= 0.5:
 
                 results.append({
 
                     "incident_id":
                         f"INC-{idx}",
 
-                    "score":
+                    "similarity":
                         round(score, 2),
 
                     "summary":
@@ -210,9 +229,8 @@ class Engine(Adapter):
 
                 })
 
-        # sort descending
         results.sort(
-            key=lambda x: x["score"],
+            key=lambda x: x["similarity"],
             reverse=True
         )
 
@@ -226,7 +244,10 @@ class Engine(Adapter):
 
         fixes = []
 
-        # deploy + latency issue
+        # ============================================
+        # ROLLBACK
+        # ============================================
+
         if (
             "deploy" in sig
             and "latency" in sig
@@ -236,19 +257,67 @@ class Engine(Adapter):
 
                 "action": "rollback",
 
-                "confidence": 0.9
+                "confidence": 0.93
 
             })
 
-        # timeout issue
-        if "timeout" in sig:
+        # ============================================
+        # RESTART
+        # ============================================
+
+        elif "timeout" in sig:
 
             fixes.append({
 
                 "action":
-                    "restart_service",
+                    "restart",
 
-                "confidence": 0.7
+                "confidence": 0.84
+
+            })
+
+        # ============================================
+        # SCALE UP
+        # ============================================
+
+        elif "cpu" in sig:
+
+            fixes.append({
+
+                "action":
+                    "scale_up",
+
+                "confidence": 0.88
+
+            })
+
+        # ============================================
+        # CONFIG CHANGE
+        # ============================================
+
+        elif "memory" in sig:
+
+            fixes.append({
+
+                "action":
+                    "config_change",
+
+                "confidence": 0.79
+
+            })
+
+        # ============================================
+        # FAILOVER
+        # ============================================
+
+        elif "failure" in sig:
+
+            fixes.append({
+
+                "action":
+                    "failover",
+
+                "confidence": 0.76
 
             })
 
@@ -269,11 +338,9 @@ class Engine(Adapter):
 
             kind = e.get("kind", "")
 
-            # deployment seen
             if kind == "deploy":
                 deploy_seen = True
 
-            # latency metric
             if kind == "metric":
 
                 metric = str(
@@ -283,7 +350,6 @@ class Engine(Adapter):
                 if "latency" in metric:
                     latency_seen = True
 
-            # causal relation
             if deploy_seen and latency_seen:
 
                 chain.append({
@@ -313,10 +379,6 @@ class Engine(Adapter):
         mode="fast"
     ):
 
-        # =================================================
-        # FETCH RELATED DATA
-        # =================================================
-
         related = self.get_related_events(
             signal
         )
@@ -333,13 +395,32 @@ class Engine(Adapter):
             sig
         )
 
-        fixes = self.recommend_fix(sig)
+        # ============================================
+        # DECOY DETECTION
+        # ============================================
 
-        # ================================================
-        # PRINT ONLY ONCE
-        # ================================================
+        high_conf = [
 
-        if Engine.already_printed:
+            s for s in similar
+
+            if s.get("similarity", 0) >= 0.5
+
+        ]
+
+        if len(high_conf) == 0:
+
+            fixes = []
+
+            explanation = (
+
+                "AI classified this incident as a "
+                "possible decoy or low-confidence anomaly."
+
+            )
+
+        else:
+
+            fixes = self.recommend_fix(sig)
 
             explanation = (
 
@@ -348,9 +429,11 @@ class Engine(Adapter):
                 "timeout failures. Historical "
                 "incidents with similar behavioral "
                 "patterns were previously mitigated "
-                "using rollback remediation."
+                "using remediation actions."
 
             )
+
+        if Engine.already_printed:
 
             return {
 
@@ -376,284 +459,28 @@ class Engine(Adapter):
 
         Engine.already_printed = True
 
-        # =================================================
-        # RAW OUTPUT
-        # =================================================
-
         print("\n")
-        print("╔" + "═" * 60 + "╗")
-        print("║                 RAW ENGINE OUTPUT                  ║")
-        print("╚" + "═" * 60 + "╝")
+        print("=" * 70)
+        print("AI ANALYSIS REPORT")
+        print("=" * 70)
 
-        print("\n")
-        print("RAW INCIDENT SIGNAL:")
-        print(signal)
-
-        print("\n")
-        print("RAW RELATED EVENTS:")
-
-        for r in related[:10]:
-            print(r)
-
-        print("\n")
-        print("RAW SIGNATURE:")
-        print(sig)
-
-        print("\n")
-        print("RAW CAUSAL CHAIN:")
-        print(causal)
-
-        print("\n")
-        print("RAW SIMILAR INCIDENTS:")
-        print(similar)
-
-        print("\n")
-        print("RAW REMEDIATIONS:")
-        print(fixes)
-
-        # =================================================
-        # STRUCTURED OUTPUT
-        # =================================================
-
-        print("\n")
-        print("╔" + "═" * 60 + "╗")
-        print("║            STRUCTURED CONTEXT VIEW                 ║")
-        print("╚" + "═" * 60 + "╝")
-
-        # -------------------------------------------------
-        # INCIDENT SIGNAL
-        # -------------------------------------------------
-
-        print("\n")
-        print("┌" + "─" * 58 + "┐")
-        print("│ INCIDENT SIGNAL                                   │")
-        print("└" + "─" * 58 + "┘")
-
-        print(
-            f"{'FIELD':<20}"
-            f"{'VALUE':<35}"
-        )
-
-        print("-" * 55)
-
-        print(
-            f"{'Service':<20}"
-            f"{str(signal.get('service')):<35}"
-        )
-
-        print(
-            f"{'Incident ID':<20}"
-            f"{str(signal.get('incident_id')):<35}"
-        )
-
-        print(
-            f"{'Timestamp':<20}"
-            f"{str(signal.get('ts')):<35}"
-        )
-
-        # -------------------------------------------------
-        # RELATED EVENTS
-        # -------------------------------------------------
-
-        print("\n")
-        print("┌" + "─" * 58 + "┐")
-        print("│ RELATED EVENTS                                    │")
-        print("└" + "─" * 58 + "┘")
-
-        print(
-
-            f"{'KIND':<18}"
-            f"{'SERVICE':<20}"
-            f"{'TIMESTAMP':<15}"
-
-        )
-
-        print("-" * 55)
-
-        for r in related[:10]:
-
-            print(
-
-                f"{str(r.get('kind', '')):<18}"
-                f"{str(r.get('service', '')):<20}"
-                f"{str(r.get('ts', '')):<15}"
-
-            )
-
-        # -------------------------------------------------
-        # SIGNATURES
-        # -------------------------------------------------
-
-        print("\n")
-        print("┌" + "─" * 58 + "┐")
-        print("│ DETECTED BEHAVIOR SIGNATURES                      │")
-        print("└" + "─" * 58 + "┘")
+        print("\nSIGNATURES DETECTED:")
 
         for s in sig:
-            print(f"✔ {s}")
+            print(f"- {s}")
 
-        # -------------------------------------------------
-        # CAUSAL CHAIN
-        # -------------------------------------------------
+        print("\nSIMILAR INCIDENTS:")
 
-        print("\n")
-        print("┌" + "─" * 58 + "┐")
-        print("│ CAUSAL CHAIN                                      │")
-        print("└" + "─" * 58 + "┘")
+        for s in similar:
+            print(s)
 
-        if causal:
+        print("\nREMEDIATIONS:")
 
-            for c in causal:
+        for f in fixes:
+            print(f)
 
-                print(
-                    f"CAUSE  : {c.get('cause')}"
-                )
-
-                print(
-                    f"EFFECT : {c.get('effect')}"
-                )
-
-                print(
-                    f"CONF   : {c.get('confidence')}"
-                )
-
-        else:
-            print("No causal chain identified")
-
-        # -------------------------------------------------
-        # SIMILAR INCIDENTS
-        # -------------------------------------------------
-
-        print("\n")
-        print("┌" + "─" * 58 + "┐")
-        print("│ SIMILAR HISTORICAL INCIDENTS                      │")
-        print("└" + "─" * 58 + "┘")
-
-        if similar:
-
-            print(
-
-                f"{'INCIDENT':<20}"
-                f"{'SCORE':<15}"
-                f"{'SUMMARY':<20}"
-
-            )
-
-            print("-" * 55)
-
-            for s in similar:
-
-                print(
-
-                    f"{str(s.get('incident_id')):<20}"
-                    f"{str(s.get('score')):<15}"
-                    f"{str(s.get('summary')):<20}"
-
-                )
-
-        else:
-            print("No similar incidents found")
-
-        # -------------------------------------------------
-        # REMEDIATION
-        # -------------------------------------------------
-
-        print("\n")
-        print("┌" + "─" * 58 + "┐")
-        print("│ SUGGESTED REMEDIATIONS                            │")
-        print("└" + "─" * 58 + "┘")
-
-        if fixes:
-
-            for f in fixes:
-
-                print(
-                    f"→ ACTION     : "
-                    f"{f.get('action')}"
-                )
-
-                print(
-                    f"  CONFIDENCE : "
-                    f"{f.get('confidence')}"
-                )
-
-        else:
-            print("No remediation suggestions")
-
-        # =================================================
-        # AI ANALYSIS
-        # =================================================
-
-        print("\n")
-        print("╔" + "═" * 60 + "╗")
-        print("║                AI ANALYSIS REPORT                 ║")
-        print("╚" + "═" * 60 + "╝")
-
-        print("\n")
-
-        if (
-            "deploy" in sig
-            and "latency" in sig
-        ):
-
-            print(
-                "AI detected a deployment-related "
-                "latency regression pattern."
-            )
-
-            print(
-                "Historical operational memory "
-                "shows similar outages previously "
-                "resolved using rollback actions."
-            )
-
-        elif "timeout" in sig:
-
-            print(
-                "AI identified timeout instability "
-                "across the affected service."
-            )
-
-        else:
-
-            print(
-                "AI detected operational anomaly "
-                "requiring investigation."
-            )
-
-        print("\n")
-        print("FINAL ROOT CAUSE:")
-
-        if "deploy" in sig:
-
-            print(
-                "Recent deployment likely triggered "
-                "service degradation."
-            )
-
-        else:
-
-            print(
-                "Unknown operational instability."
-            )
-
-        print("\n")
-        print("OVERALL CONFIDENCE : 0.87")
-
-        # =================================================
-        # FINAL RETURN
-        # =================================================
-
-        explanation = (
-
-            "Recent deployment activity was "
-            "followed by elevated latency and "
-            "timeout failures. Historical "
-            "incidents with similar behavioral "
-            "patterns were previously mitigated "
-            "using rollback remediation."
-
-        )
+        print("\nEXPLANATION:")
+        print(explanation)
 
         final_output = {
 
@@ -685,3 +512,4 @@ class Engine(Adapter):
 
     def close(self):
         pass
+
